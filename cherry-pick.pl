@@ -5,6 +5,10 @@ use warnings;
 
 package cherry_pick_bin;
 
+use FindBin '$Bin';
+
+use lib $Bin;
+
 use Getopt::Long 'GetOptions';
 
 use CherryPick ();
