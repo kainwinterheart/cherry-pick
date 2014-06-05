@@ -19,6 +19,13 @@ extends 'CherryPick::VCS';
 
 has 'backend' => ( is => 'ro', isa => 'SVN::Client', init_arg => undef, lazy => true, builder => 'build_backend' );
 
+after [ 'can_update', 'update', 'merge', 'diff', 'revert', 'propset' ] => sub {
+
+	my ( $self ) = @_;
+
+	$self -> backend() -> pool() -> clear();
+};
+
 
 sub build_backend {
 
