@@ -12,6 +12,8 @@ use File::Temp 'tmpnam';
 use List::Util 'min';
 use List::MoreUtils 'uniq';
 
+use String::ShellQuote 'shell_quote';
+
 use boolean;
 
 use namespace::autoclean;
@@ -20,7 +22,7 @@ extends 'CherryPick::VCS';
 
 has 'backend' => ( is => 'ro', isa => 'SVN::Client', init_arg => undef, lazy => true, builder => 'build_backend' );
 
-after [ 'can_update', 'update', 'merge', 'diff', 'revert', 'propset' ] => sub {
+after [ 'can_update', 'update', 'merge', 'diff', 'revert', 'propset', 'get_base_rev', 'add' ] => sub {
 
     my ( $self ) = @_;
 
@@ -152,6 +154,8 @@ sub update {
 
     my ( $self, $file, $rev ) = @_;
 
+    $self -> trace( 'svn up -r', $rev, $file );
+
     $self -> backend() -> update( $file, $rev, true );
 
     return;
@@ -161,7 +165,53 @@ sub merge {
 
     my ( $self, $file, $rev ) = @_;
 
-    $self -> backend() -> merge( $file, $rev -> [ 0 ] - 1, $file, $rev -> [ 1 ], $file, true, false, false, false );
+    my $from = $rev -> [ 0 ] - 1;
+    my $to   = $rev -> [ 1 ];
+
+    # $self -> trace( 'svn merge -r', "$from:$to", $file );
+    #
+    # $self -> backend() -> merge( $file, $from, $file, $to, $file, true, false, false, false );
+
+    my $diff = $self -> _diff( $file, $from, $to );
+
+    $self -> patch( $diff );
+
+    return;
+}
+
+sub add {
+
+    my ( $self, $file ) = @_;
+
+    $self -> trace( 'svn add', $file );
+
+    $self -> backend() -> add( $file, true );
+
+    return;
+}
+
+sub patch {
+
+    my ( $self, $diff ) = @_;
+
+    my ( $fh, $diff_file ) = tmpnam();
+
+    print $fh $diff;
+
+    close( $fh );
+
+    my $cmd = sprintf( 'patch -s -p0 < %s', shell_quote( $diff_file ) );
+
+    $self -> trace( $cmd );
+
+    my $code = system( $cmd );
+
+    unlink( $diff_file );
+
+    if( $code >> 8 ) {
+
+        die sprintf( 'Patch failed with code %d', $code );
+    }
 
     return;
 }
@@ -170,11 +220,23 @@ sub diff {
 
     my ( $self, $file ) = @_;
 
+    my $from = $self -> get_base_rev( $file );
+    my $to   = 'WORKING';
+
+    return $self -> _diff( $file, $from, $to );
+}
+
+sub _diff {
+
+    my ( $self, $file, $from, $to ) = @_;
+
     $file = $self -> to_rel( $file );
 
     my ( $fh, $diff_file ) = tmpnam();
 
-    $self -> backend() -> diff( [], $file, 'BASE', $file, 'WORKING', true, false, false, $fh, *STDERR );
+    $self -> trace( 'svn diff -r', "$from:$to", $file );
+
+    $self -> backend() -> diff( [], $file, $from, $file, $to, true, false, false, $fh, *STDERR );
 
     seek( $fh, 0, 0 );
 
@@ -186,9 +248,26 @@ sub diff {
     return $out;
 }
 
+sub get_base_rev {
+
+    my ( $self, $file ) = @_;
+
+    my $base_rev  = 'BASE';
+    my $info_func = sub {
+
+        $base_rev = $_[ 1 ] -> rev();
+    };
+
+    $self -> backend() -> info( $file, undef, undef, $info_func, false );
+
+    return $base_rev;
+}
+
 sub revert {
 
     my ( $self, $file ) = @_;
+
+    $self -> trace( 'svn revert', $file );
 
     $self -> backend() -> revert( $file, true );
 

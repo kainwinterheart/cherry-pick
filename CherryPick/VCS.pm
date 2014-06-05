@@ -86,6 +86,15 @@ sub init;
 
 sub least_revision;
 
+sub trace {
+
+    my ( $self, @arr ) = @_;
+
+    print STDERR join( ' ', '#', @arr ), "\n";
+
+    return;
+}
+
 __PACKAGE__ -> meta() -> make_immutable();
 
 1;

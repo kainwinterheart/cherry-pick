@@ -70,24 +70,42 @@ sub process {
 
     my @nodes = ();
     my %files = ();
+    my @add   = ();
 
     foreach my $node ( @$list ) {
 
-        my $revisions = $vcs -> parse_revspec( $node -> { 'rev' } );
-
         my $files = $node -> { 'file' };
 
-        unless( ref( $files ) eq 'ARRAY' ) {
+        if( defined $files ) {
 
-            $files = [ $files ];
+            my $revisions = $vcs -> parse_revspec( $node -> { 'rev' } );
+
+            unless( ref( $files ) eq 'ARRAY' ) {
+
+                $files = [ $files ];
+            }
+
+            foreach my $file ( @$files ) {
+
+                $file = $vcs -> to_abs( $file );
+
+                push( @nodes, [ $file, $revisions ] );
+                push( @{ $files{ $file } }, @$revisions );
+            }
         }
 
-        foreach my $file ( @$files ) {
+        my $add = $node -> { 'add' };
 
-            $file = $vcs -> to_abs( $file );
+        if( defined $add ) {
 
-            push( @nodes, [ $file, $revisions ] );
-            push( @{ $files{ $file } }, @$revisions );
+            if( ref( $add ) eq 'ARRAY' ) {
+
+                push( @add, @$add );
+
+            } else {
+
+                push( @add, $add );
+            }
         }
     }
 
@@ -136,31 +154,41 @@ SCAN_FOR_SUBDIRS:
         $vcs -> precheck( $file );
     }
 
+    $vcs -> precheck( $vcs -> wcpath() );
+
     $self -> stage( 'init' );
+
+    my @revisions = ();
 
     while( my ( $file, $revisions ) = each( %files ) ) {
 
-        $self -> trace( "\t", $file );
+        push( @revisions, @$revisions );
+    }
 
-        my $revision = $vcs -> least_revision( $revisions );
+    my $least_revision = $vcs -> least_revision( \@revisions );
 
-        $vcs -> init( $file, $revision );
+    $vcs -> init( $vcs -> wcpath(), $least_revision );
+
+    while( my ( $file, $dummy ) = each( %files ) ) {
+
+        $vcs -> init( $file, $least_revision );
     }
 
     $self -> stage( 'prepare' );
 
     foreach my $node ( @nodes ) {
 
-        $self -> trace( "\t", $node -> [ 0 ] );
-
         $vcs -> prepare( @$node[ 0, 1 ] );
+    }
+
+    foreach my $file ( @add ) {
+
+        $vcs -> add( $file );
     }
 
     $self -> stage( 'processing' );
 
     while( my ( $file, $dummy ) = each( %files ) ) {
-
-        $self -> trace( "\t", $file );
 
         push( @out, $self -> process_file( $file, $vcs ) );
     }
@@ -171,6 +199,8 @@ SCAN_FOR_SUBDIRS:
 
         $vcs -> clean( $file );
     }
+
+    $vcs -> clean( $vcs -> wcpath() );
 
     return \@out;
 }
