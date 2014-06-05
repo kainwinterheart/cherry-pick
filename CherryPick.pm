@@ -7,6 +7,7 @@ use Mouse;
 
 use YAML ();
 
+use File::Spec ();
 use File::Slurp 'slurp';
 
 use Module::Load 'load';
@@ -73,7 +74,7 @@ sub process {
     foreach my $node ( @$list ) {
 
         my $revisions = $vcs -> parse_revspec( $node -> { 'rev' } );
-        
+
         my $files = $node -> { 'file' };
 
         unless( ref( $files ) eq 'ARRAY' ) {
@@ -86,8 +87,45 @@ sub process {
             $file = $vcs -> to_abs( $file );
 
             push( @nodes, [ $file, $revisions ] );
+            push( @{ $files{ $file } }, @$revisions );
+        }
+    }
 
-            $files{ $file } = 1;
+    my @sorted_files = sort( keys( %files ) );
+    my $sorted_files = scalar( @sorted_files );
+
+    for( my $i = 0; $i < $sorted_files; ++$i ) {
+
+        my $root = $sorted_files[ $i ];
+
+        next unless( -d $root );
+
+        my @root = File::Spec -> splitdir( $root );
+        my $root_parts = scalar( @root );
+
+SCAN_FOR_SUBDIRS:
+        while( defined $sorted_files[ $i + 1 ] ) {
+
+            my $subpath = $sorted_files[ $i + 1 ];
+
+            my @subpath = File::Spec -> splitdir( $subpath );
+
+            if( $root_parts >= scalar( @subpath ) ) {
+
+                last;
+            }
+
+            for( my $j = 0; $j < $root_parts; ++$j ) {
+
+                if( $root[ $j ] ne $subpath[ $j ] ) {
+
+                    last SCAN_FOR_SUBDIRS;
+                }
+            }
+
+            push( @{ $files{ $root } }, @{ delete( $files{ $subpath } ) } );
+
+            ++$i;
         }
     }
 
@@ -96,6 +134,17 @@ sub process {
     while( my ( $file, $dummy ) = each( %files ) ) {
 
         $vcs -> precheck( $file );
+    }
+
+    $self -> stage( 'init' );
+
+    while( my ( $file, $revisions ) = each( %files ) ) {
+
+        $self -> trace( "\t", $file );
+
+        my $revision = $vcs -> least_revision( $revisions );
+
+        $vcs -> init( $file, $revision );
     }
 
     $self -> stage( 'prepare' );
@@ -164,4 +213,3 @@ __PACKAGE__ -> meta() -> make_immutable();
 1;
 
 __END__
-

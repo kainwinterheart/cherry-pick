@@ -9,6 +9,7 @@ use SVN::Client ();
 
 use File::Temp 'tmpnam';
 
+use List::Util 'min';
 use List::MoreUtils 'uniq';
 
 use boolean;
@@ -61,6 +62,13 @@ sub parse_revspec {
     return \@revisions;
 }
 
+sub least_revision {
+
+    my ( $self, $revisions ) = @_;
+
+    return min( @$revisions );
+}
+
 sub precheck {
 
     my ( $self, $file ) = @_;
@@ -73,11 +81,18 @@ sub precheck {
     return;
 }
 
+sub init {
+
+    my ( $self, $file, $revision ) = @_;
+
+    $self -> update( $file, $revision - 1 );
+
+    return;
+}
+
 sub prepare {
 
     my ( $self, $file, $revisions ) = @_;
-
-    $self -> update( $file, $revisions -> [ 0 ] - 1 );
 
     my @collapsed_revs  = ();
     my $total_revisions = scalar( @$revisions );

@@ -62,7 +62,7 @@ sub get_changes;
 
 sub precheck;
 
-=head2 prepare( Str $file, ArrayRef[Int] $revisions )
+=head2 prepare( Str $file, ArrayRef[Str] $revisions )
 
 =cut
 
@@ -74,9 +74,20 @@ sub prepare;
 
 sub clean;
 
+=head2 init( Str $file, Str $revision )
+
+=cut
+
+sub init;
+
+=head2 least_revision( ArrayRef[Str] $revisions )
+
+=cut
+
+sub least_revision;
+
 __PACKAGE__ -> meta() -> make_immutable();
 
 1;
 
 __END__
-
