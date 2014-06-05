@@ -7,9 +7,9 @@ use Mouse;
 
 use SVN::Client ();
 
-use String::ShellQuote 'shell_quote';
-
 use File::Temp 'tmpnam';
+
+use List::MoreUtils 'uniq';
 
 use boolean;
 
@@ -21,9 +21,9 @@ has 'backend' => ( is => 'ro', isa => 'SVN::Client', init_arg => undef, lazy => 
 
 after [ 'can_update', 'update', 'merge', 'diff', 'revert', 'propset' ] => sub {
 
-	my ( $self ) = @_;
+    my ( $self ) = @_;
 
-	$self -> backend() -> pool() -> clear();
+    $self -> backend() -> pool() -> clear();
 };
 
 
@@ -56,7 +56,7 @@ sub parse_revspec {
         }
     }
 
-    @revisions = sort{ $a <=> $b } @revisions;
+    @revisions = uniq( sort( { $a <=> $b } @revisions ) );
 
     return \@revisions;
 }
@@ -79,7 +79,34 @@ sub prepare {
 
     $self -> update( $file, $revisions -> [ 0 ] - 1 );
 
-    foreach my $rev ( @$revisions ) {
+    my @collapsed_revs  = ();
+    my $total_revisions = scalar( @$revisions );
+
+    for( my $i = 0; $i < $total_revisions; ++$i ) {
+
+        my $from = $revisions -> [ $i ];
+        my $to   = $from;
+
+        while( defined $revisions -> [ $i + 1 ] ) {
+
+            my $l_to = $revisions -> [ $i + 1 ];
+
+            if( $l_to == ( $to + 1 ) ) {
+
+                $to = $l_to;
+
+                ++$i;
+
+            } else {
+
+                last;
+            }
+        }
+
+        push( @collapsed_revs, [ $from, $to ] );
+    }
+
+    foreach my $rev ( @collapsed_revs ) {
 
         $self -> merge( $file, $rev );
     }
@@ -119,8 +146,7 @@ sub merge {
 
     my ( $self, $file, $rev ) = @_;
 
-    $self -> backend() -> merge( $file, $rev - 1, $file, $rev, $file, true, false, false, false );
-    # system( sprintf( 'svn merge -c %d %s', $rev, shell_quote( $file ) ) );
+    $self -> backend() -> merge( $file, $rev -> [ 0 ] - 1, $file, $rev -> [ 1 ], $file, true, false, false, false );
 
     return;
 }
@@ -199,4 +225,3 @@ __PACKAGE__ -> meta() -> make_immutable();
 1;
 
 __END__
-
